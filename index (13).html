@@ -1,0 +1,846 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>CVision — Hand Gesture Recognition</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+
+<style>
+  /* ─── RESET ────────────────────────────────────────── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  /* ─── DESIGN TOKENS ────────────────────────────────── */
+  :root {
+    --bg:       #0a1210;
+    --surface:  rgba(255,255,255,.05);
+    --border:   rgba(255,255,255,.1);
+    --white:    #ffffff;
+    --dim:      rgba(255,255,255,.55);
+    --faint:    rgba(255,255,255,.35);
+    --radius:   14px;
+    --font:     'Syne', sans-serif;
+  }
+
+  /* ─── BASE ─────────────────────────────────────────── */
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    color: var(--white);
+    font-family: var(--font);   /* ← single font, everything inherits */
+    font-size: 16px;
+    line-height: 1.5;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ─── BACKGROUND ───────────────────────────────────── */
+  .bg-layer {
+    position: fixed; inset: 0; z-index: 0; pointer-events: none;
+    background:
+      radial-gradient(ellipse 80% 55% at 15% -5%,  rgba(0,180,120,.22) 0%, transparent 55%),
+      radial-gradient(ellipse 60% 45% at 85% 105%, rgba(0,160,100,.15) 0%, transparent 55%),
+      #0a1210;
+  }
+
+  .streaks { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
+  .streak {
+    position: absolute; top: -10%; width: 1px; height: 130%;
+    background: linear-gradient(180deg, transparent 0%, rgba(255,255,255,.06) 45%, transparent 100%);
+    animation: streakFloat linear infinite;
+  }
+  .streak:nth-child(1){ left:8%;  animation-duration:14s; }
+  .streak:nth-child(2){ left:22%; animation-duration:20s; animation-delay:-5s; }
+  .streak:nth-child(3){ left:37%; animation-duration:17s; animation-delay:-9s; }
+  .streak:nth-child(4){ left:53%; animation-duration:23s; animation-delay:-2s; }
+  .streak:nth-child(5){ left:68%; animation-duration:15s; animation-delay:-7s; }
+  .streak:nth-child(6){ left:81%; animation-duration:19s; animation-delay:-4s; }
+  .streak:nth-child(7){ left:93%; animation-duration:12s; animation-delay:-11s; }
+
+  @keyframes streakFloat {
+    from { transform: translateY(-8%); }
+    to   { transform: translateY(8%); }
+  }
+
+  /* ─── NAVBAR ───────────────────────────────────────── */
+  nav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 5%; height: 66px;
+    background: rgba(10,18,16,.75);
+    backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .nav-logo {
+    font-size: 1.35rem;
+    font-weight: 800;
+    color: var(--white);
+    letter-spacing: -.5px;
+  }
+
+  .nav-links { display: flex; gap: 2.5rem; list-style: none; }
+  .nav-links a {
+    text-decoration: none;
+    font-size: .9rem;
+    font-weight: 500;
+    color: var(--dim);
+    transition: color .2s;
+  }
+  .nav-links a:hover { color: var(--white); }
+
+  /* ── shared button base ── */
+  .btn {
+    display: inline-flex; align-items: center; gap: .5rem;
+    padding: .5rem 1.3rem;
+    border-radius: 100px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--white);
+    font-family: var(--font);
+    font-size: .875rem;
+    font-weight: 600;
+    cursor: pointer;
+    text-decoration: none;
+    transition: background .2s, border-color .2s, transform .2s;
+    white-space: nowrap;
+  }
+  .btn:hover {
+    background: rgba(255,255,255,.1);
+    border-color: rgba(255,255,255,.22);
+    transform: translateY(-1px);
+  }
+  .btn:active { transform: translateY(0); }
+
+  /* primary variant — slightly brighter fill */
+  .btn-primary {
+    padding: .75rem 2rem;
+    border-radius: 100px;
+    font-size: 1rem;
+    font-weight: 700;
+    background: rgba(255,255,255,.12);
+    border-color: rgba(255,255,255,.22);
+  }
+  .btn-primary:hover {
+    background: rgba(255,255,255,.2);
+    box-shadow: 0 0 28px rgba(255,255,255,.1), 0 4px 20px rgba(0,0,0,.4);
+  }
+
+  /* ─── WRAPPER ──────────────────────────────────────── */
+  .wrapper { position: relative; z-index: 1; padding-top: 66px; }
+
+  /* ─── HERO ─────────────────────────────────────────── */
+  .hero {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 3rem;
+    align-items: center;
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 6rem 5% 5rem;
+    animation: fadeUp .8s ease both;
+  }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(28px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Badge */
+  .badge {
+    display: inline-flex; align-items: center; gap: .5rem;
+    padding: .35rem 1rem;
+    border-radius: 100px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    font-size: .75rem;
+    font-weight: 600;
+    letter-spacing: .06em;
+    color: var(--white);
+    text-transform: uppercase;
+    margin-bottom: 1.6rem;
+    animation: fadeUp .7s .1s ease both;
+  }
+  .badge-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: #4fffb0;
+    box-shadow: 0 0 8px #4fffb0;
+    animation: blink 2s infinite;
+  }
+  @keyframes blink {
+    0%,100% { opacity:1; } 50% { opacity:.3; }
+  }
+
+  .hero-text { animation: fadeUp .7s .05s ease both; }
+
+  h1 {
+    font-size: clamp(2rem, 4vw, 3.2rem);
+    font-weight: 800;
+    line-height: 1.12;
+    letter-spacing: -.03em;
+    color: var(--white);
+    margin-bottom: 1.2rem;
+  }
+
+  .subtitle {
+    font-size: 1rem;
+    font-weight: 400;
+    color: var(--dim);
+    line-height: 1.75;
+    max-width: 460px;
+    margin-bottom: 2rem;
+  }
+
+  /* Feature pills */
+  .feature-pills { display: flex; flex-wrap: wrap; gap: .6rem; margin-bottom: 2.4rem; }
+  .pill {
+    display: flex; align-items: center; gap: .4rem;
+    padding: .3rem .8rem;
+    border-radius: 100px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    font-size: .78rem;
+    font-weight: 500;
+    color: var(--dim);
+    animation: fadeUp .7s calc(.15s + var(--d)) ease both;
+  }
+
+  /* ─── WEBCAM PANEL ─────────────────────────────────── */
+  .cam-panel {
+    position: relative;
+    border-radius: 20px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    background: rgba(0,20,16,.5);
+    backdrop-filter: blur(12px);
+    box-shadow: 0 8px 60px rgba(0,0,0,.5);
+    animation: fadeUp .7s .15s ease both;
+    aspect-ratio: 4/3;
+  }
+
+  .cam-placeholder {
+    width: 100%; height: 100%; min-height: 300px;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 1rem;
+    color: var(--dim);
+    font-size: .9rem;
+    font-weight: 400;
+  }
+  .cam-icon {
+    width: 60px; height: 60px; border-radius: 50%;
+    border: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.5rem;
+    background: var(--surface);
+  }
+
+  #videoEl {
+    width: 100%; height: 100%;
+    object-fit: cover; display: none;
+    transform: scaleX(-1);
+    border-radius: 20px;
+  }
+  #canvasEl {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+    display: none; transform: scaleX(-1);
+    border-radius: 20px;
+  }
+
+  .gesture-overlay {
+    position: absolute; bottom: 0; left: 0; right: 0;
+    padding: 1rem 1.4rem;
+    background: linear-gradient(to top, rgba(10,18,16,.95) 0%, transparent 100%);
+    display: flex; align-items: flex-end; justify-content: space-between;
+    opacity: 0; transition: opacity .4s;
+  }
+  .gesture-overlay.active { opacity: 1; }
+
+  .gesture-label {
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: var(--white);
+    letter-spacing: -.02em;
+    transition: all .3s;
+  }
+
+  .status-pill {
+    display: inline-flex; align-items: center; gap: .4rem;
+    padding: .28rem .7rem;
+    border-radius: 100px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    font-size: .7rem;
+    font-weight: 600;
+    color: var(--white);
+  }
+  .status-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: #4fffb0;
+    box-shadow: 0 0 6px #4fffb0;
+    animation: blink 1.5s infinite;
+  }
+
+  .fps-badge {
+    position: absolute; top: 12px; right: 14px;
+    padding: .22rem .55rem;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: rgba(0,0,0,.45);
+    font-size: .68rem;
+    font-weight: 500;
+    color: var(--dim);
+    display: none;
+  }
+
+  .scan-corner {
+    position: absolute; width: 18px; height: 18px;
+    border-color: rgba(255,255,255,.35); border-style: solid;
+    display: none;
+  }
+  .cam-panel.active .scan-corner { display: block; }
+  .c-tl { top:10px; left:10px;  border-width:2px 0 0 2px; }
+  .c-tr { top:10px; right:10px; border-width:2px 2px 0 0; }
+  .c-bl { bottom:10px; left:10px;  border-width:0 0 2px 2px; }
+  .c-br { bottom:10px; right:10px; border-width:0 2px 2px 0; }
+
+  /* ─── SECTIONS ─────────────────────────────────────── */
+  .features, .gesture-ref {
+    max-width: 1200px; margin: 0 auto;
+    padding: 2rem 5% 5rem;
+  }
+
+  .section-label {
+    font-size: .72rem;
+    font-weight: 700;
+    letter-spacing: .12em;
+    color: var(--dim);
+    text-transform: uppercase;
+    margin-bottom: .8rem;
+  }
+
+  h2 {
+    font-size: clamp(1.6rem, 3vw, 2.2rem);
+    font-weight: 800;
+    letter-spacing: -.03em;
+    color: var(--white);
+    margin-bottom: 0;
+  }
+
+  /* ─── CARDS ────────────────────────────────────────── */
+  .features-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+    gap: 1rem; margin-top: 2rem;
+  }
+
+  .card {
+    padding: 1.6rem;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    background: var(--surface);
+    backdrop-filter: blur(10px);
+    transition: transform .25s, border-color .25s;
+    animation: fadeUp .7s calc(.1s * var(--i)) ease both;
+  }
+  .card:hover {
+    transform: translateY(-5px);
+    border-color: rgba(255,255,255,.18);
+  }
+
+  .card-icon {
+    width: 44px; height: 44px; border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.25rem; margin-bottom: 1rem;
+    background: rgba(255,255,255,.06);
+    border: 1px solid var(--border);
+  }
+
+  .card h3 {
+    font-size: .95rem;
+    font-weight: 700;
+    color: var(--white);
+    margin-bottom: .45rem;
+  }
+  .card p {
+    font-size: .83rem;
+    font-weight: 400;
+    color: var(--dim);
+    line-height: 1.65;
+  }
+
+  /* ─── GESTURE CARDS ────────────────────────────────── */
+  .gesture-cards {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: 1rem; margin-top: 2rem;
+  }
+
+  .g-card {
+    padding: 1.4rem;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    background: var(--surface);
+    backdrop-filter: blur(10px);
+    display: flex; flex-direction: column; align-items: center; gap: .7rem;
+    text-align: center;
+    transition: transform .25s, border-color .25s;
+  }
+  .g-card:hover { transform: translateY(-4px); border-color: rgba(255,255,255,.18); }
+
+  .g-emoji  { font-size: 2.2rem; }
+  .g-fingers { font-size: 1.8rem; font-weight: 800; color: var(--white); }
+  .g-action  { font-size: .85rem; font-weight: 600; color: var(--white); }
+  .g-desc    { font-size: .75rem; font-weight: 400; color: var(--dim); }
+
+  /* ─── FOOTER ───────────────────────────────────────── */
+  footer {
+    border-top: 1px solid var(--border);
+    text-align: center;
+    padding: 2rem 5%;
+    font-size: .8rem;
+    font-weight: 400;
+    color: var(--faint);
+  }
+
+  /* ─── TOAST ────────────────────────────────────────── */
+  .toast {
+    position: fixed; bottom: 2rem; left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    padding: .6rem 1.4rem;
+    border-radius: 100px;
+    border: 1px solid var(--border);
+    background: rgba(255,255,255,.08);
+    color: var(--white);
+    font-size: .83rem;
+    font-weight: 500;
+    backdrop-filter: blur(14px);
+    z-index: 200;
+    transition: transform .4s cubic-bezier(.16,1,.3,1);
+    white-space: nowrap;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+
+  /* ─── RESPONSIVE ───────────────────────────────────── */
+  @media (max-width: 768px) {
+    .hero { grid-template-columns: 1fr; padding: 3.5rem 5% 3rem; }
+    .cam-panel { order: -1; }
+    .nav-links { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Background layers -->
+<div class="bg-layer"></div>
+<div class="streaks">
+  <div class="streak"></div><div class="streak"></div><div class="streak"></div>
+  <div class="streak"></div><div class="streak"></div><div class="streak"></div>
+  <div class="streak"></div>
+</div>
+
+<!-- ── NAVBAR ─────────────────────────────────────────── -->
+<nav>
+  <div class="nav-logo">CVision</div>
+  <ul class="nav-links">
+    <li><a href="#features">Features</a></li>
+    <li><a href="#demo">Demo</a></li>
+    <li><a href="#gestures">Gestures</a></li>
+  </ul>
+  <a href="#demo" class="btn">Try Demo →</a>
+</nav>
+
+<!-- ── WRAPPER ────────────────────────────────────────── -->
+<div class="wrapper">
+
+  <!-- ── HERO ──────────────────────────────────────────── -->
+  <section class="hero" id="demo">
+
+    <!-- Left: text -->
+    <div class="hero-text">
+      <div class="badge">
+        <span class="badge-dot"></span>
+        AI Powered &nbsp;•&nbsp; Real-time Detection
+      </div>
+
+      <h1>
+        Control Presentations<br>
+        with <span class="grad-text">Hand Gestures</span>
+      </h1>
+
+      <p class="subtitle">
+        A real-time computer vision web application powered by MediaPipe Hands.
+        No installation, no plugins — just your browser and a webcam.
+      </p>
+
+      <div class="feature-pills">
+        <div class="pill" style="--d:.05s"><span class="pill-icon">⚡</span> Zero latency</div>
+        <div class="pill" style="--d:.1s"><span class="pill-icon">🌐</span> Runs in browser</div>
+        <div class="pill" style="--d:.15s"><span class="pill-icon">🔒</span> Local processing</div>
+        <div class="pill" style="--d:.2s"><span class="pill-icon">📱</span> Mobile ready</div>
+      </div>
+
+      <button class="btn btn-primary" id="startBtn" onclick="toggleCamera()">
+        Start Camera →
+      </button>
+    </div>
+
+    <!-- Right: webcam panel -->
+    <div class="cam-panel" id="camPanel">
+      <!-- Corner brackets -->
+      <div class="scan-corner c-tl"></div>
+      <div class="scan-corner c-tr"></div>
+      <div class="scan-corner c-bl"></div>
+      <div class="scan-corner c-br"></div>
+
+      <!-- Placeholder when off -->
+      <div class="cam-placeholder" id="placeholder">
+        <div class="cam-icon">📷</div>
+        <p>Click "Start Camera" to begin</p>
+        <p style="font-size:.75rem;opacity:.5">Access required to webcam</p>
+      </div>
+
+      <!-- Live feed -->
+      <video id="videoEl" playsinline autoplay muted></video>
+      <canvas id="canvasEl"></canvas>
+
+      <!-- FPS badge -->
+      <div class="fps-badge" id="fpsBadge">— fps</div>
+
+      <!-- Gesture overlay -->
+      <div class="gesture-overlay" id="gestureOverlay">
+        <div class="gesture-label" id="gestureLabel">Detecting…</div>
+        <div class="status-pill">
+          <span class="status-dot"></span>
+          <span>Live Detection</span>
+        </div>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- ── FEATURES ───────────────────────────────────────── -->
+  <section class="features" id="features">
+    <div class="section-label">Capabilities</div>
+    <h2>What makes CVision powerful</h2>
+
+    <div class="features-grid">
+      <div class="card" style="--i:1">
+        <div class="card-icon">⚡</div>
+        <h3>Real-time Detection</h3>
+        <p>MediaPipe Hands runs at 30+ FPS directly in your browser, delivering instant gesture feedback with no perceptible lag.</p>
+      </div>
+      <div class="card" style="--i:2">
+        <div class="card-icon">🖐️</div>
+        <h3>Finger Tracking</h3>
+        <p>21 precise hand landmarks are detected per frame, enabling accurate finger-count and pose recognition with high confidence.</p>
+      </div>
+      <div class="card" style="--i:3">
+        <div class="card-icon">📦</div>
+        <h3>No Installation</h3>
+        <p>Open the page, grant camera permission, and you're live. Zero downloads, zero setup — works on any modern browser.</p>
+      </div>
+      <div class="card" style="--i:4">
+        <div class="card-icon">🔒</div>
+        <h3>Private by Design</h3>
+        <p>All inference runs locally on your device. No video frames are ever sent to a server, keeping your data completely private.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── GESTURE REFERENCE ─────────────────────────────── -->
+  <section class="gesture-ref" id="gestures">
+    <div class="section-label">Gesture Map</div>
+    <h2>Supported gestures</h2>
+
+    <div class="gesture-cards">
+      <div class="g-card">
+        <div class="g-emoji">☝️</div>
+        <div class="g-fingers">1</div>
+        <div class="g-action">Next Slide →</div>
+        <div class="g-desc">Raise only your index finger</div>
+      </div>
+      <div class="g-card">
+        <div class="g-emoji">✌️</div>
+        <div class="g-fingers">2</div>
+        <div class="g-action">← Previous Slide</div>
+        <div class="g-desc">Raise index + middle finger</div>
+      </div>
+      <div class="g-card">
+        <div class="g-emoji">🤟</div>
+        <div class="g-fingers">3</div>
+        <div class="g-action">Pause / Hold</div>
+        <div class="g-desc">Raise three fingers</div>
+      </div>
+      <div class="g-card">
+        <div class="g-emoji">🖐️</div>
+        <div class="g-fingers">5</div>
+        <div class="g-action">Stop / End</div>
+        <div class="g-desc">Open hand, all fingers extended</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── FOOTER ─────────────────────────────────────────── -->
+  <footer>
+    Built with <span>♥</span> using MediaPipe Hands &amp; vanilla JS · CVision © 2026
+  </footer>
+
+</div><!-- end wrapper -->
+
+<!-- ── TOAST ───────────────────────────────────────────── -->
+<div class="toast" id="toast"></div>
+
+<!-- ── MEDIAPIPE ──────────────────────────────────────── -->
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+<script>
+/* ═══════════════════════════════════════════════════════
+   STATE
+═══════════════════════════════════════════════════════ */
+let cameraActive = false;
+let hands = null;
+let mpCamera = null;
+
+const videoEl  = document.getElementById('videoEl');
+const canvasEl = document.getElementById('canvasEl');
+const ctx      = canvasEl.getContext('2d');
+
+const placeholder     = document.getElementById('placeholder');
+const gestureOverlay  = document.getElementById('gestureOverlay');
+const gestureLabel    = document.getElementById('gestureLabel');
+const fpsBadge        = document.getElementById('fpsBadge');
+const startBtn        = document.getElementById('startBtn');
+const camPanel        = document.getElementById('camPanel');
+const toast           = document.getElementById('toast');
+
+let lastFrameTime = performance.now();
+let frameCount    = 0;
+let fps           = 0;
+
+/* ═══════════════════════════════════════════════════════
+   TOAST
+═══════════════════════════════════════════════════════ */
+function showToast(msg, dur = 2800) {
+  toast.textContent = msg;
+  toast.classList.add('show');
+  setTimeout(() => toast.classList.remove('show'), dur);
+}
+
+/* ═══════════════════════════════════════════════════════
+   FINGER COUNT
+   Uses standard MediaPipe Hands 21-landmark model.
+   Tip indices: thumb=4, index=8, middle=12, ring=16, pinky=20
+═══════════════════════════════════════════════════════ */
+function countFingers(landmarks) {
+  const tips  = [4, 8, 12, 16, 20];
+  const dips  = [3, 6, 10, 14, 18];
+  let count = 0;
+
+  // Thumb: compare x instead of y (horizontal direction)
+  // For a mirrored feed, tip.x < ip.x means extended
+  const thumbTip = landmarks[4];
+  const thumbIP  = landmarks[3];
+  if (thumbTip.x < thumbIP.x) count++;
+
+  // Other four fingers: tip.y < dip.y means extended (smaller y = higher on screen)
+  for (let i = 1; i < 5; i++) {
+    if (landmarks[tips[i]].y < landmarks[dips[i]].y) count++;
+  }
+  return count;
+}
+
+/* ═══════════════════════════════════════════════════════
+   GESTURE LABEL LOOKUP
+═══════════════════════════════════════════════════════ */
+function getGestureText(n) {
+  const map = {
+    0: '✊  Fist',
+    1: '☝️  Next Slide →',
+    2: '✌️  ← Previous Slide',
+    3: '🤟  Pause / Hold',
+    4: '🖖  Mode 4',
+    5: '🖐️  Stop / End',
+  };
+  return map[n] || `${n} Fingers`;
+}
+
+/* ═══════════════════════════════════════════════════════
+   DRAW LANDMARKS (custom neon style)
+═══════════════════════════════════════════════════════ */
+function drawNeonLandmarks(landmarks) {
+  const w = canvasEl.width, h = canvasEl.height;
+
+  // Connection pairs (MediaPipe standard)
+  const connections = [
+    [0,1],[1,2],[2,3],[3,4],
+    [0,5],[5,6],[6,7],[7,8],
+    [0,9],[9,10],[10,11],[11,12],
+    [0,13],[13,14],[14,15],[15,16],
+    [0,17],[17,18],[18,19],[19,20],
+    [5,9],[9,13],[13,17]
+  ];
+
+  ctx.save();
+
+  // Glow lines
+  ctx.shadowColor = 'rgba(0,229,195,.8)';
+  ctx.shadowBlur = 8;
+  ctx.strokeStyle = 'rgba(0,229,195,.55)';
+  ctx.lineWidth = 2;
+
+  for (const [a, b] of connections) {
+    const la = landmarks[a], lb = landmarks[b];
+    ctx.beginPath();
+    ctx.moveTo(la.x * w, la.y * h);
+    ctx.lineTo(lb.x * w, lb.y * h);
+    ctx.stroke();
+  }
+
+  // Landmark dots
+  for (let i = 0; i < landmarks.length; i++) {
+    const lm = landmarks[i];
+    const x = lm.x * w, y = lm.y * h;
+
+    ctx.shadowColor = i === 0 ? 'rgba(10,240,118,.9)' : 'rgba(0,229,195,.9)';
+    ctx.shadowBlur  = 10;
+    ctx.fillStyle   = i === 0 ? '#0af076' : '#00e5c3';
+    ctx.beginPath();
+    ctx.arc(x, y, i === 0 ? 6 : 4, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.restore();
+}
+
+/* ═══════════════════════════════════════════════════════
+   MEDIAPIPE CALLBACK
+═══════════════════════════════════════════════════════ */
+function onResults(results) {
+  // Resize canvas to video
+  if (canvasEl.width  !== videoEl.videoWidth ||
+      canvasEl.height !== videoEl.videoHeight) {
+    canvasEl.width  = videoEl.videoWidth  || 640;
+    canvasEl.height = videoEl.videoHeight || 480;
+  }
+
+  ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
+
+  if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+    const lm = results.multiHandLandmarks[0];
+    drawNeonLandmarks(lm);
+
+    const fingers = countFingers(lm);
+    gestureLabel.textContent = getGestureText(fingers);
+  } else {
+    gestureLabel.textContent = '— No hand detected —';
+  }
+
+  // FPS
+  frameCount++;
+  const now = performance.now();
+  if (now - lastFrameTime >= 1000) {
+    fps = Math.round(frameCount * 1000 / (now - lastFrameTime));
+    fpsBadge.textContent = `${fps} fps`;
+    frameCount = 0;
+    lastFrameTime = now;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   INITIALISE MEDIAPIPE
+═══════════════════════════════════════════════════════ */
+function initMediaPipe() {
+  hands = new Hands({
+    locateFile: (file) =>
+      `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+  });
+
+  hands.setOptions({
+    maxNumHands: 1,
+    modelComplexity: 1,
+    minDetectionConfidence: 0.7,
+    minTrackingConfidence: 0.5,
+  });
+
+  hands.onResults(onResults);
+}
+
+/* ═══════════════════════════════════════════════════════
+   TOGGLE CAMERA
+═══════════════════════════════════════════════════════ */
+async function toggleCamera() {
+  if (cameraActive) {
+    stopCamera(); return;
+  }
+
+  try {
+    startBtn.textContent = 'Initialising…';
+    startBtn.disabled = true;
+
+    if (!hands) initMediaPipe();
+
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' }
+    });
+
+    videoEl.srcObject = stream;
+    await videoEl.play();
+
+    mpCamera = new Camera(videoEl, {
+      onFrame: async () => { await hands.send({ image: videoEl }); },
+      width: 1280, height: 720,
+    });
+    mpCamera.start();
+
+    // Show elements
+    placeholder.style.display = 'none';
+    videoEl.style.display     = 'block';
+    canvasEl.style.display    = 'block';
+    fpsBadge.style.display    = 'block';
+    gestureOverlay.classList.add('active');
+    camPanel.classList.add('active');
+
+    startBtn.textContent = 'Stop Camera ✕';
+    startBtn.style.borderColor = 'rgba(255,100,100,.4)';
+    startBtn.style.color       = '#ffffff';
+    startBtn.disabled = false;
+    cameraActive = true;
+    showToast('✅  Camera active — show your hand!');
+
+  } catch (err) {
+    console.error(err);
+    startBtn.textContent = 'Start Camera →';
+    startBtn.disabled = false;
+    showToast('❌  Camera access denied. Please allow permissions.');
+  }
+}
+
+function stopCamera() {
+  if (mpCamera) { mpCamera.stop(); mpCamera = null; }
+  if (videoEl.srcObject) {
+    videoEl.srcObject.getTracks().forEach(t => t.stop());
+    videoEl.srcObject = null;
+  }
+
+  videoEl.style.display    = 'none';
+  canvasEl.style.display   = 'none';
+  fpsBadge.style.display   = 'none';
+  placeholder.style.display = '';
+  gestureOverlay.classList.remove('active');
+  camPanel.classList.remove('active');
+  ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
+
+  startBtn.textContent = 'Start Camera →';
+  startBtn.style.borderColor = '';
+  startBtn.style.color       = '';
+  cameraActive = false;
+  showToast('Camera stopped');
+}
+</script>
+</body>
+</html>
